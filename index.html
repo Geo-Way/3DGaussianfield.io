@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Luma Gaussian Splat Viewer</title>
+
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: black;
+}
+canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+</style>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.157.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.157.0/examples/jsm/",
+    "@lumaai/luma-web": "https://unpkg.com/@lumaai/luma-web@0.2.0/dist/library/luma-web.module.js"
+  }
+}
+</script>
+</head>
+
+<body>
+
+<script type="module">
+
+import { WebGLRenderer, PerspectiveCamera, Scene } from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { LumaSplatsThree } from '@lumaai/luma-web';
+
+
+// ----------------------
+// RENDERER
+// ----------------------
+const renderer = new WebGLRenderer({ antialias: false });
+document.body.appendChild(renderer.domElement);
+
+
+// ----------------------
+// CAMERA
+// ----------------------
+const camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000);
+camera.position.set(0, 0, 2);
+
+
+// ----------------------
+// CONTROLS
+// ----------------------
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+
+// ----------------------
+// SCENE
+// ----------------------
+const scene = new Scene();
+
+
+// ----------------------
+// LUMA SPLAT (CORRECTO)
+// ----------------------
+const splat = new LumaSplatsThree({
+
+    source: "https://lumalabs.ai/capture/45416114-1836-4332-afb9-a9cbb8c12cab",
+
+    // opcional (mejora estabilidad)
+    loadingAnimationEnabled: true
+
+});
+
+scene.add(splat);
+
+
+// ----------------------
+// RESIZE
+// ----------------------
+function resize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+
+// ----------------------
+// LOOP
+// ----------------------
+renderer.setAnimationLoop(() => {
+    controls.update();
+    renderer.render(scene, camera);
+});
+
+</script>
+
+</body>
+</html>
