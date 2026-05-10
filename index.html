@@ -2,91 +2,311 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Luma Gaussian Splat Viewer</title>
-
-<style>
-html, body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    background: black;
-}
-canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luma Splat Viewer</title>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.157.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.157.0/examples/jsm/",
+    "three":            "https://unpkg.com/three@0.157.0/build/three.module.js",
+    "three/addons/":    "https://unpkg.com/three@0.157.0/examples/jsm/",
     "@lumaai/luma-web": "https://unpkg.com/@lumaai/luma-web@0.2.0/dist/library/luma-web.module.js"
   }
 }
 </script>
-</head>
 
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #111;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+}
+
+canvas {
+    display: block;
+    width: 100vw !important;
+    height: 100vh !important;
+}
+
+/* ── Orbit toggle button (top-left, like DemoHelloWorld) ── */
+#btn-orbit {
+    position: fixed;
+    top: 18px; left: 18px;
+    z-index: 10;
+    width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(30,30,30,0.72);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+    color: white;
+    font-size: 18px;
+    /* workaround Firefox perf bug (same as original) */
+}
+#btn-orbit:hover { background: rgba(60,60,60,0.85); border-color: rgba(255,255,255,0.35); }
+#btn-orbit.orbiting { background: rgba(63,143,204,0.85); border-color: rgba(63,143,204,0.6); }
+
+/* ── Logo bottom-right ── */
+#logo {
+    position: fixed;
+    bottom: 18px; right: 18px;
+    z-index: 10;
+    height: 36px;
+    width: auto;
+    opacity: 0.85;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    /* drop-shadow so it reads on any background */
+    filter: drop-shadow(0 1px 4px rgba(0,0,0,0.55));
+}
+
+/* ── Pixel ratio control top-right ── */
+#dpr-control {
+    position: fixed;
+    top: 18px; right: 18px;
+    z-index: 10;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(30,30,30,0.72);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px;
+    padding: 6px 10px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: rgba(255,255,255,0.75);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    user-select: none;
+    white-space: nowrap;
+}
+#dpr-control label { opacity: 0.55; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+#dpr-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 80px; height: 2px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 99px; outline: none; cursor: pointer;
+}
+#dpr-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #9effc0;
+    box-shadow: 0 0 6px rgba(158,255,192,0.6);
+    cursor: pointer;
+}
+#dpr-slider::-moz-range-thumb {
+    width: 12px; height: 12px; border-radius: 50%; border: none;
+    background: #9effc0; cursor: pointer;
+}
+#dpr-val { color: #9effc0; font-size: 12px; min-width: 26px; text-align: right; }
+
+/* ── Loading overlay ── */
+#loading {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+    background: #111;
+    transition: opacity 0.6s;
+}
+#loading.hidden { opacity: 0; pointer-events: none; }
+
+.ld-title {
+    font-size: 13px; letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.35); text-transform: uppercase;
+}
+.ld-bar-wrap {
+    width: 220px; height: 2px;
+    background: rgba(255,255,255,0.08); border-radius: 99px; overflow: hidden;
+}
+.ld-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #9effc0, #7eb5ff);
+    border-radius: 99px; width: 0%;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 8px #9effc0;
+}
+</style>
+</head>
 <body>
+
+<!-- Loading screen -->
+<div id="loading">
+    <div class="ld-title">Cargando modelo…</div>
+    <div class="ld-bar-wrap"><div class="ld-bar" id="ld-bar"></div></div>
+</div>
+
+<!-- Orbit toggle -->
+<div id="btn-orbit" title="Toggle auto-orbit">⟳</div>
+
+<!-- Logo bottom-right -->
+<img id="logo" src="img/Logo_geo_w.png" alt="Logo" />
+
+<!-- Pixel ratio control top-right -->
+<div id="dpr-control">
+    <label>PIXEL RATIO</label>
+    <input type="range" id="dpr-slider" min="0.5" max="2" step="0.25" value="1">
+    <span id="dpr-val">1×</span>
+</div>
 
 <script type="module">
 
-import { WebGLRenderer, PerspectiveCamera, Scene } from 'three';
+import {
+    WebGLRenderer,
+    PerspectiveCamera,
+    Scene,
+    Vector3,
+    MathUtils,
+} from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { LumaSplatsThree } from '@lumaai/luma-web';
 
-
-// ----------------------
-// RENDERER
-// ----------------------
+// ── RENDERER ─────────────────────────────────────────────────────────────────
 const renderer = new WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
+// ── CAMERA ───────────────────────────────────────────────────────────────────
+const camera = new PerspectiveCamera(
+    50,
+    window.innerWidth / window.innerHeight,
+    0.00001,
+    1000,
+);
+camera.position.set(4, 2, 2);
 
-// ----------------------
-// CAMERA
-// ----------------------
-const camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000);
-camera.position.set(0, 0, 2);
-
-
-// ----------------------
-// CONTROLS
-// ----------------------
+// ── ORBIT CONTROLS ────────────────────────────────────────────────────────────
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+controls.dampingFactor  = 0.05;
+controls.minDistance    = 0.5;
+controls.maxDistance    = 40;
 
-
-// ----------------------
-// SCENE
-// ----------------------
+// ── SCENE ─────────────────────────────────────────────────────────────────────
 const scene = new Scene();
 
-
-// ----------------------
-// LUMA SPLAT (CORRECTO)
-// ----------------------
-const splat = new LumaSplatsThree({
-
-    source: "https://lumalabs.ai/capture/45416114-1836-4332-afb9-a9cbb8c12cab",
-
-    // opcional (mejora estabilidad)
-    loadingAnimationEnabled: true
-
+// ── LUMA SPLAT ────────────────────────────────────────────────────────────────
+const splats = new LumaSplatsThree({
+    source: 'https://lumalabs.ai/capture/45416114-1836-4332-afb9-a9cbb8c12cab',
+    loadingAnimationEnabled: false,
 });
 
-scene.add(splat);
+splats.onLoad = () => {
+    // Fake progress to 100% then hide loader
+    ldBar.style.width = '100%';
+    setTimeout(() => loading.classList.add('hidden'), 500);
 
+    // Capture env cubemap for lighting + blurred background (same as DemoHelloWorld)
+    splats.captureCubemap(renderer).then((envMap) => {
+        scene.environment          = envMap;
+        scene.background           = envMap;
+        scene.backgroundBlurriness = 1;
+    });
+};
 
-// ----------------------
-// RESIZE
-// ----------------------
+scene.add(splats);
+
+// ── FAKE PROGRESS BAR (Luma doesn't expose load %) ───────────────────────────
+const ldBar     = document.getElementById('ld-bar');
+const loading   = document.getElementById('loading');
+let   ldPct     = 0;
+const ldInterval = setInterval(() => {
+    // Asymptotic fill: quickly reaches ~85%, then waits for onLoad
+    ldPct += (90 - ldPct) * 0.04;
+    ldBar.style.width = ldPct.toFixed(1) + '%';
+}, 80);
+
+splats.onLoad = (() => {
+    const original = splats.onLoad;
+    return () => {
+        clearInterval(ldInterval);
+        ldBar.style.width = '100%';
+        setTimeout(() => loading.classList.add('hidden'), 500);
+        splats.captureCubemap(renderer).then((envMap) => {
+            scene.environment          = envMap;
+            scene.background           = envMap;
+            scene.backgroundBlurriness = 1;
+        });
+        if (original) original();
+    };
+})();
+
+// Re-assign properly (the IIFE above wraps correctly)
+// Simplified: just overwrite directly
+splats.onLoad = () => {
+    clearInterval(ldInterval);
+    ldBar.style.width = '100%';
+    setTimeout(() => loading.classList.add('hidden'), 500);
+
+    splats.captureCubemap(renderer).then((envMap) => {
+        scene.environment          = envMap;
+        scene.background           = envMap;
+        scene.backgroundBlurriness = 1;
+    });
+};
+
+// ── PIXEL RATIO CONTROL (top-right) ──────────────────────────────────────────
+const dprSlider = document.getElementById('dpr-slider');
+const dprVal    = document.getElementById('dpr-val');
+
+// Init slider at current devicePixelRatio (capped to slider max=2)
+const initDpr = Math.min(window.devicePixelRatio, 2);
+dprSlider.value = initDpr;
+dprVal.textContent = initDpr.toFixed(2) + '×';
+renderer.setPixelRatio(initDpr);
+
+dprSlider.addEventListener('input', () => {
+    const v = parseFloat(dprSlider.value);
+    dprVal.textContent = v.toFixed(2) + '×';
+    renderer.setPixelRatio(v);
+    // re-apply size so internal render buffer updates
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+});
+
+// ── AUTO-ORBIT  (ported from DemoHelloWorld.ts) ───────────────────────────────
+// DemoHelloWorld rotates the camera around the target at a fixed radius,
+// smoothly interrupted when the user grabs the controls.
+let   autoOrbit   = true;          // start orbiting automatically
+let   orbitAngle  = 0;             // current angle in radians
+const ORBIT_SPEED = 0.3;           // radians per second
+const ORBIT_R     = camera.position.length(); // keep initial radius
+
+// Detect user interaction → pause orbit
+controls.addEventListener('start', () => {
+    if (autoOrbit) {
+        autoOrbit = false;
+        updateOrbitBtn();
+    }
+});
+
+// Toggle button
+const btnOrbit = document.getElementById('btn-orbit');
+btnOrbit.addEventListener('click', () => {
+    autoOrbit = !autoOrbit;
+    if (autoOrbit) {
+        // Sync angle to current camera position so there's no jump
+        orbitAngle = Math.atan2(
+            camera.position.x - controls.target.x,
+            camera.position.z - controls.target.z,
+        );
+    }
+    updateOrbitBtn();
+});
+
+function updateOrbitBtn() {
+    btnOrbit.classList.toggle('orbiting', autoOrbit);
+    btnOrbit.title = autoOrbit ? 'Detener órbita' : 'Iniciar órbita automática';
+}
+updateOrbitBtn();
+
+// ── RESIZE ────────────────────────────────────────────────────────────────────
 function resize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-
+    const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -94,16 +314,42 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// ── RENDER LOOP ───────────────────────────────────────────────────────────────
+let lastTime = performance.now();
 
-// ----------------------
-// LOOP
-// ----------------------
 renderer.setAnimationLoop(() => {
-    controls.update();
+    const now   = performance.now();
+    const delta = Math.min((now - lastTime) / 1000, 0.1); // seconds, capped
+    lastTime = now;
+
+    if (autoOrbit) {
+        // Advance angle
+        orbitAngle += ORBIT_SPEED * delta;
+
+        // Compute new camera position around the orbit target
+        const target = controls.target;
+        const y      = camera.position.y;           // keep current height
+        const r      = Math.sqrt(
+            Math.pow(camera.position.x - target.x, 2) +
+            Math.pow(camera.position.z - target.z, 2),
+        ) || ORBIT_R;
+
+        camera.position.set(
+            target.x + r * Math.sin(orbitAngle),
+            y,
+            target.z + r * Math.cos(orbitAngle),
+        );
+        camera.lookAt(target);
+
+        // Sync controls so damping & zoom still work after resuming manual control
+        controls.update();
+    } else {
+        controls.update();
+    }
+
     renderer.render(scene, camera);
 });
 
 </script>
-
 </body>
 </html>
